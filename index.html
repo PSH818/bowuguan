@@ -396,7 +396,7 @@
 
         // 自由漫游相机参数
         let cameraYaw = 0;
-        let cameraPitch = 0.3;
+        let cameraPitch = 0;
 
         // ==========================================
         // 3. 贴图生成器
@@ -1497,9 +1497,7 @@
                 camera.position.z += finalMove.z;
 
                 // 设置相机朝向
-                const lookTarget = camera.position.clone().add(forward);
-                lookTarget.y = camera.position.y + Math.tan(cameraPitch) * 10;
-                camera.lookAt(lookTarget);
+                camera.rotation.set(cameraPitch, cameraYaw, 0, 'YXZ');
 
                 checkUIIntersections();
             }
