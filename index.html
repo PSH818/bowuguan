@@ -228,39 +228,6 @@
             color: #fff;
         }
 
-        /* 虚拟摇杆 */
-        #joystick {
-            position: absolute;
-            bottom: 40px;
-            left: 40px;
-            width: 140px;
-            height: 140px;
-            z-index: 10;
-            display: none;
-        }
-        #joystick-base {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.15);
-            border: 2px solid rgba(255, 255, 255, 0.35);
-            border-radius: 50%;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-        #joystick-knob {
-            position: absolute;
-            width: 56px;
-            height: 56px;
-            background: rgba(255, 255, 255, 0.55);
-            border: 2px solid rgba(255, 255, 255, 0.8);
-            border-radius: 50%;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-            pointer-events: none;
-        }
-
         /* 移动端提示 */
         #mobile-controls-hint {
             position: absolute;
@@ -302,11 +269,6 @@
 
     <div id="crosshair"></div>
     <div id="mobile-controls-hint">左侧区域滑动移动 • 右侧区域滑动环视</div>
-
-    <div id="joystick">
-        <div id="joystick-base"></div>
-        <div id="joystick-knob"></div>
-    </div>
 
     <div id="modal">
         <div id="modal-close">&#10006;</div>
@@ -432,17 +394,9 @@
         const interactableObjects = [];
         const collisionObjects = [];
 
-        // 玩家角色与第三人称相机参数
-        let standModel = null;
-        let walkModel = null;
-        let playerModel = null;
-        let walkMixer = null;
-        let isModelLoaded = false;
+        // 自由漫游相机参数
         let cameraYaw = 0;
         let cameraPitch = 0.3;
-        const cameraDistance = 4.5;
-        const cameraHeight = 2.2;
-        const joystick = { x: 0, y: 0, active: false };
 
         // ==========================================
         // 3. 贴图生成器
@@ -1242,97 +1196,8 @@
 
         buildMuseum();
 
-        // 加载玩家角色模型（站立 + 走路两个独立模型）
-        let modelsToLoad = 2;
-        function onModelReady() {
-            modelsToLoad--;
-            if (modelsToLoad === 0) {
-                isModelLoaded = true;
-            }
-        }
-
-        function setupPlayerModel(gltf) {
-            const model = gltf.scene;
-            const box = new THREE.Box3().setFromObject(model);
-            const size = box.getSize(new THREE.Vector3());
-            const targetHeight = 1.7;
-            const scale = targetHeight / size.y;
-            model.scale.set(scale, scale, scale);
-            const newBox = new THREE.Box3().setFromObject(model);
-            const footY = -newBox.min.y;
-            model.userData.footY = footY;
-            model.position.set(0, footY, 5);
-            model.rotation.y = Math.PI; // 让模型正面朝向 +Z（面对相机）
-            scene.add(model);
-            return model;
-        }
-
-        const gltfLoader = new THREE.GLTFLoader();
-
-        // 剔除动画中的整体位移（root motion），只保留原地踏步的肢体动作
-        function removeRootMotion(clip) {
-            for (let i = 0; i < clip.tracks.length; i++) {
-                const track = clip.tracks[i];
-                if (track.name.endsWith('.position')) {
-                    const values = track.values;
-                    const n = values.length / 3;
-                    if (n < 2) continue;
-                    const dx = values[values.length - 3] - values[0];
-                    const dy = values[values.length - 2] - values[1];
-                    const dz = values[values.length - 1] - values[2];
-                    const disp = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                    if (disp > 0.001) {
-                        console.log('Removing root motion from track:', track.name, 'displacement:', disp.toFixed(4));
-                        const duration = track.times[track.times.length - 1];
-                        for (let j = 0; j < n; j++) {
-                            const t = track.times[j] / duration;
-                            values[j * 3] -= dx * t;
-                            values[j * 3 + 2] -= dz * t;
-                        }
-                    }
-                }
-            }
-        }
-
-        gltfLoader.load('zhanli.glb', (gltf) => {
-            standModel = setupPlayerModel(gltf);
-            standModel.visible = true;
-            playerModel = standModel;
-            onModelReady();
-        }, undefined, (err) => {
-            console.error('Failed to load zhanli.glb:', err);
-            onModelReady();
-        });
-
-        gltfLoader.load('zoulu.glb', (gltf) => {
-            walkModel = setupPlayerModel(gltf);
-            walkModel.visible = false;
-            if (gltf.animations && gltf.animations.length > 0) {
-                console.log('Walk animations found:', gltf.animations.length);
-                gltf.animations.forEach((clip, i) => {
-                    console.log('Clip', i, 'duration:', clip.duration, 'tracks:', clip.tracks.length);
-                    clip.tracks.forEach(t => {
-                        if (t.name.endsWith('.position')) {
-                            const dx = t.values[t.values.length - 3] - t.values[0];
-                            const dz = t.values[t.values.length - 1] - t.values[2];
-                            console.log('  Track:', t.name, 'disp:', Math.sqrt(dx*dx + dz*dz).toFixed(4));
-                        }
-                    });
-                });
-                removeRootMotion(gltf.animations[0]);
-                walkMixer = new THREE.AnimationMixer(walkModel);
-                const action = walkMixer.clipAction(gltf.animations[0]);
-                action.setLoop(THREE.LoopPingPong, Infinity);
-                action.play();
-            }
-            onModelReady();
-        }, undefined, (err) => {
-            console.error('Failed to load zoulu.glb:', err);
-            onModelReady();
-        });
-
         // ==========================================
-        // 5. 第三人称角色控制器
+        // 5. 第一人称自由漫游控制器
         // ==========================================
         let isStarted = false;
         const keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
@@ -1358,84 +1223,7 @@
             }
         });
 
-        // 虚拟摇杆
-        const joystickEl = document.getElementById('joystick');
-        const joystickKnob = document.getElementById('joystick-knob');
-        const joystickRadius = 70;
-        const knobRadius = 28;
-        const maxKnobDist = joystickRadius - knobRadius;
-
-        function updateJoystickUI() {
-            const dx = joystick.x * maxKnobDist;
-            const dy = joystick.y * maxKnobDist;
-            joystickKnob.style.transform = 'translate(calc(-50% + ' + dx + 'px), calc(-50% + ' + dy + 'px))';
-        }
-
-        function handleJoystickStart(clientX, clientY) {
-            const rect = joystickEl.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            const dx = clientX - centerX;
-            const dy = clientY - centerY;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < joystickRadius * 1.5) {
-                joystick.active = true;
-            }
-        }
-
-        function handleJoystickMove(clientX, clientY) {
-            if (!joystick.active) return;
-            const rect = joystickEl.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            let dx = clientX - centerX;
-            let dy = clientY - centerY;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist > maxKnobDist) {
-                dx = dx / dist * maxKnobDist;
-                dy = dy / dist * maxKnobDist;
-            }
-            joystick.x = dx / maxKnobDist;
-            joystick.y = dy / maxKnobDist;
-            updateJoystickUI();
-        }
-
-        function handleJoystickEnd() {
-            joystick.active = false;
-            joystick.x = 0;
-            joystick.y = 0;
-            updateJoystickUI();
-        }
-
-        joystickEl.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            handleJoystickStart(e.clientX, e.clientY);
-        });
-        window.addEventListener('mousemove', (e) => {
-            if (joystick.active) handleJoystickMove(e.clientX, e.clientY);
-        });
-        window.addEventListener('mouseup', () => {
-            if (joystick.active) handleJoystickEnd();
-        });
-
-        joystickEl.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (e.changedTouches.length > 0) {
-                handleJoystickStart(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-            }
-        }, { passive: false });
-        joystickEl.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            if (e.changedTouches.length > 0) {
-                handleJoystickMove(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-            }
-        }, { passive: false });
-        joystickEl.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            handleJoystickEnd();
-        }, { passive: false });
-
-        // 右半屏触摸控制视角（左半屏由虚拟摇杆接管）
+        // 触摸控制视角（全屏触摸都可旋转视角，左半屏滑动同时可移动）
         canvasEl.addEventListener('touchstart', (e) => {
             if (!isStarted || document.getElementById('modal').classList.contains('show')) return;
             for (let i = 0; i < e.changedTouches.length; i++) {
@@ -1627,7 +1415,6 @@
             setTimeout(() => {
                 document.getElementById('intro-screen').style.display = 'none';
                 isStarted = true;
-                joystickEl.style.display = 'block';
             }, 1000);
         });
         document.getElementById('modal-close').addEventListener('click', closeModal);
@@ -1638,18 +1425,18 @@
         // ==========================================
         // 7. 物理碰撞滑动检测
         // ==========================================
-        const playerRadius = 0.5;
+        const cameraRadius = 0.3;
         function getSlideMoveVector(startPos, moveVec) {
             if (moveVec.length() === 0) return moveVec;
             let allowedMove = moveVec.clone();
             if (Math.abs(moveVec.x) > 0) {
                 const dirX = new THREE.Vector3(Math.sign(moveVec.x), 0, 0);
-                const rayX = new THREE.Raycaster(startPos, dirX, 0, playerRadius + Math.abs(moveVec.x));
+                const rayX = new THREE.Raycaster(startPos, dirX, 0, cameraRadius + Math.abs(moveVec.x));
                 if (rayX.intersectObjects(collisionObjects).length > 0) allowedMove.x = 0;
             }
             if (Math.abs(moveVec.z) > 0) {
                 const dirZ = new THREE.Vector3(0, 0, Math.sign(moveVec.z));
-                const rayZ = new THREE.Raycaster(startPos, dirZ, 0, playerRadius + Math.abs(moveVec.z));
+                const rayZ = new THREE.Raycaster(startPos, dirZ, 0, cameraRadius + Math.abs(moveVec.z));
                 if (rayZ.intersectObjects(collisionObjects).length > 0) allowedMove.z = 0;
             }
             return allowedMove;
@@ -1665,8 +1452,8 @@
             requestAnimationFrame(animate);
             const delta = Math.min(clock.getDelta(), 0.1);
 
-            if (isStarted && !modalEl.classList.contains('show') && isModelLoaded && standModel && walkModel) {
-                // 基于相机水平朝向计算前后左右（forward 为远离相机的方向）
+            if (isStarted && !modalEl.classList.contains('show')) {
+                // 基于相机水平朝向计算前后左右
                 const forward = new THREE.Vector3(
                     -Math.sin(cameraYaw),
                     0,
@@ -1682,67 +1469,15 @@
                 if (keys.a || keys.ArrowLeft) moveVec.addScaledVector(right, -speed);
                 if (keys.d || keys.ArrowRight) moveVec.addScaledVector(right, speed);
 
-                // 虚拟摇杆输入（摇杆 y 轴负值 = 向前）
-                if (joystick.active || Math.abs(joystick.x) > 0.05 || Math.abs(joystick.y) > 0.05) {
-                    moveVec.addScaledVector(forward, -joystick.y * speed);
-                    moveVec.addScaledVector(right, joystick.x * speed);
-                }
+                // 碰撞检测并移动相机
+                const finalMove = getSlideMoveVector(camera.position, moveVec);
+                camera.position.x += finalMove.x;
+                camera.position.z += finalMove.z;
 
-                // 碰撞检测并移动角色（只同步 x/z，y 保持各自独立的脚底高度）
-                const playerPos = standModel.position;
-                const finalMove = getSlideMoveVector(playerPos, moveVec);
-                standModel.position.x += finalMove.x;
-                standModel.position.z += finalMove.z;
-                walkModel.position.x = standModel.position.x;
-                walkModel.position.z = standModel.position.z;
-
-                // 模型朝向移动方向（平滑转向）
-                const isMoving = moveVec.length() > 0.001;
-                if (isMoving) {
-                    const targetRotation = Math.atan2(moveVec.x, moveVec.z);
-                    let currentRotation = standModel.rotation.y;
-                    let diff = targetRotation - currentRotation;
-                    while (diff > Math.PI) diff -= Math.PI * 2;
-                    while (diff < -Math.PI) diff += Math.PI * 2;
-                    const turnAmount = diff * Math.min(1, delta * 8);
-                    standModel.rotation.y += turnAmount;
-                    walkModel.rotation.y += turnAmount;
-                }
-
-                // 切换站立/走路模型
-                if (isMoving) {
-                    if (!walkModel.visible) {
-                        walkModel.visible = true;
-                        standModel.visible = false;
-                        playerModel = walkModel;
-                    }
-                } else {
-                    if (!standModel.visible) {
-                        standModel.visible = true;
-                        walkModel.visible = false;
-                        playerModel = standModel;
-                    }
-                }
-
-                // 播放走路动画并锁定位置（防止动画 root motion 影响坐标）
-                if (walkMixer && walkModel.visible) {
-                    const prevX = walkModel.position.x;
-                    const prevZ = walkModel.position.z;
-                    walkMixer.update(delta);
-                    walkModel.position.x = prevX;
-                    walkModel.position.z = prevZ;
-                    walkModel.position.y = walkModel.userData.footY;
-                }
-
-                // 第三人称相机跟随
-                const offset = new THREE.Vector3(
-                    Math.sin(cameraYaw) * Math.cos(cameraPitch) * cameraDistance,
-                    Math.sin(cameraPitch) * cameraDistance + cameraHeight,
-                    Math.cos(cameraYaw) * Math.cos(cameraPitch) * cameraDistance
-                );
-                const targetCameraPos = standModel.position.clone().add(offset);
-                camera.position.lerp(targetCameraPos, 0.12);
-                camera.lookAt(standModel.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
+                // 设置相机朝向
+                const lookTarget = camera.position.clone().add(forward);
+                lookTarget.y = camera.position.y + Math.tan(cameraPitch) * 10;
+                camera.lookAt(lookTarget);
 
                 checkUIIntersections();
             }
