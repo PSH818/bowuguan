@@ -1205,6 +1205,9 @@
         let previousMousePosition = { x: 0, y: 0 };
         let touchLookID = null;
         let lastTouchLookPos = { x: 0, y: 0 };
+        let touchMoveID = null;
+        let lastTouchMovePos = { x: 0, y: 0 };
+        const touchMoveDelta = { x: 0, y: 0 };
 
         document.addEventListener('keydown', (e) => { if (keys.hasOwnProperty(e.key)) keys[e.key] = true; });
         document.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.key)) keys[e.key] = false; });
@@ -1223,7 +1226,7 @@
             }
         });
 
-        // 触摸控制视角（全屏触摸都可旋转视角，左半屏滑动同时可移动）
+        // 触摸控制（左半屏滑动移动，右半屏滑动旋转视角）
         canvasEl.addEventListener('touchstart', (e) => {
             if (!isStarted || document.getElementById('modal').classList.contains('show')) return;
             for (let i = 0; i < e.changedTouches.length; i++) {
@@ -1231,6 +1234,9 @@
                 if (t.clientX >= window.innerWidth / 2) {
                     touchLookID = t.identifier;
                     lastTouchLookPos = { x: t.clientX, y: t.clientY };
+                } else {
+                    touchMoveID = t.identifier;
+                    lastTouchMovePos = { x: t.clientX, y: t.clientY };
                 }
             }
         }, { passive: false });
@@ -1244,6 +1250,11 @@
                     updateCameraRotation(t.clientX - lastTouchLookPos.x, t.clientY - lastTouchLookPos.y, 0.005);
                     lastTouchLookPos = { x: t.clientX, y: t.clientY };
                 }
+                if (t.identifier === touchMoveID) {
+                    touchMoveDelta.x = (t.clientX - lastTouchMovePos.x) * 0.015;
+                    touchMoveDelta.y = (t.clientY - lastTouchMovePos.y) * 0.015;
+                    lastTouchMovePos = { x: t.clientX, y: t.clientY };
+                }
             }
         }, { passive: false });
 
@@ -1251,6 +1262,11 @@
             for (let i = 0; i < e.changedTouches.length; i++) {
                 let t = e.changedTouches[i];
                 if (t.identifier === touchLookID) touchLookID = null;
+                if (t.identifier === touchMoveID) {
+                    touchMoveID = null;
+                    touchMoveDelta.x = 0;
+                    touchMoveDelta.y = 0;
+                }
             }
         });
 
@@ -1468,6 +1484,12 @@
                 if (keys.s || keys.ArrowDown) moveVec.addScaledVector(forward, -speed);
                 if (keys.a || keys.ArrowLeft) moveVec.addScaledVector(right, -speed);
                 if (keys.d || keys.ArrowRight) moveVec.addScaledVector(right, speed);
+
+                // 触摸移动（左半屏滑动）
+                if (Math.abs(touchMoveDelta.x) > 0.001 || Math.abs(touchMoveDelta.y) > 0.001) {
+                    moveVec.addScaledVector(right, touchMoveDelta.x * speed * 8);
+                    moveVec.addScaledVector(forward, -touchMoveDelta.y * speed * 8);
+                }
 
                 // 碰撞检测并移动相机
                 const finalMove = getSlideMoveVector(camera.position, moveVec);
