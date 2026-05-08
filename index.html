@@ -1269,6 +1269,40 @@
 
         const gltfLoader = new THREE.GLTFLoader();
 
+        // 剔除动画中的整体位移（root motion），只保留原地踏步的肢体动作
+        function removeRootMotion(clip) {
+            let maxDisplacement = 0;
+            let rootPosTrack = null;
+            for (let i = 0; i < clip.tracks.length; i++) {
+                const track = clip.tracks[i];
+                if (track.name.endsWith('.position')) {
+                    const values = track.values;
+                    const n = values.length / 3;
+                    if (n < 2) continue;
+                    const dx = values[values.length - 3] - values[0];
+                    const dy = values[values.length - 2] - values[1];
+                    const dz = values[values.length - 1] - values[2];
+                    const disp = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    if (disp > maxDisplacement) {
+                        maxDisplacement = disp;
+                        rootPosTrack = track;
+                    }
+                }
+            }
+            if (rootPosTrack && maxDisplacement > 0.01) {
+                const values = rootPosTrack.values;
+                const n = values.length / 3;
+                const dx = values[values.length - 3] - values[0];
+                const dz = values[values.length - 1] - values[2];
+                const duration = rootPosTrack.times[rootPosTrack.times.length - 1];
+                for (let j = 0; j < n; j++) {
+                    const t = rootPosTrack.times[j] / duration;
+                    values[j * 3] -= dx * t;
+                    values[j * 3 + 2] -= dz * t;
+                }
+            }
+        }
+
         gltfLoader.load('zhanli.glb', (gltf) => {
             standModel = setupPlayerModel(gltf);
             standModel.visible = true;
@@ -1283,6 +1317,7 @@
             walkModel = setupPlayerModel(gltf);
             walkModel.visible = false;
             if (gltf.animations && gltf.animations.length > 0) {
+                removeRootMotion(gltf.animations[0]);
                 walkMixer = new THREE.AnimationMixer(walkModel);
                 walkMixer.clipAction(gltf.animations[0]).play();
             }
