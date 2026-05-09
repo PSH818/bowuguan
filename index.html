@@ -39,6 +39,40 @@
             transform: translate(-50%, -50%) scale(1.5);
         }
 
+        /* 虚拟摇杆 */
+        #joystick-zone {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            width: 140px;
+            height: 140px;
+            z-index: 20;
+            display: none;
+            touch-action: none;
+        }
+        #joystick-base {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.12);
+            border: 2px solid rgba(255, 255, 255, 0.25);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        #joystick-thumb {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.55);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: transform 0.05s linear;
+        }
+
         /* 欢迎页面/加载遮罩 */
         #intro-screen {
             position: absolute;
@@ -268,7 +302,11 @@
     </div>
 
     <div id="crosshair"></div>
-    <div id="mobile-controls-hint">左侧区域滑动移动 • 右侧区域滑动环视</div>
+    <div id="joystick-zone">
+        <div id="joystick-base"></div>
+        <div id="joystick-thumb"></div>
+    </div>
+    <div id="mobile-controls-hint">左下角摇杆移动 • 右侧滑动环视</div>
 
     <div id="modal">
         <div id="modal-close">&#10006;</div>
@@ -1208,6 +1246,11 @@
         let touchMoveID = null;
         let lastTouchMovePos = { x: 0, y: 0 };
         const touchMoveDelta = { x: 0, y: 0 };
+        const joystickZone = document.getElementById('joystick-zone');
+        const joystickThumb = document.getElementById('joystick-thumb');
+        const joystickRadius = 35;
+        let joystickTouchId = null;
+        const joystickCenter = { x: 0, y: 0 };
 
         document.addEventListener('keydown', (e) => { if (keys.hasOwnProperty(e.key)) keys[e.key] = true; });
         document.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.key)) keys[e.key] = false; });
@@ -1234,9 +1277,6 @@
                 if (t.clientX >= window.innerWidth / 2) {
                     touchLookID = t.identifier;
                     lastTouchLookPos = { x: t.clientX, y: t.clientY };
-                } else {
-                    touchMoveID = t.identifier;
-                    lastTouchMovePos = { x: t.clientX, y: t.clientY };
                 }
             }
         }, { passive: false });
@@ -1266,6 +1306,68 @@
                     touchMoveID = null;
                     touchMoveDelta.x = 0;
                     touchMoveDelta.y = 0;
+                }
+            }
+        });
+
+        function updateJoystick(x, y) {
+            let dx = x - joystickCenter.x;
+            let dy = y - joystickCenter.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance > joystickRadius) {
+                const scale = joystickRadius / distance;
+                dx *= scale;
+                dy *= scale;
+            }
+            joystickThumb.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+            touchMoveDelta.x = dx / joystickRadius;
+            touchMoveDelta.y = dy / joystickRadius;
+        }
+
+        function resetJoystick() {
+            joystickTouchId = null;
+            joystickThumb.style.transform = 'translate(-50%, -50%)';
+            touchMoveDelta.x = 0;
+            touchMoveDelta.y = 0;
+        }
+
+        joystickZone.addEventListener('touchstart', (e) => {
+            if (!isStarted || document.getElementById('modal').classList.contains('show')) return;
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                let t = e.changedTouches[i];
+                if (joystickTouchId === null) {
+                    joystickTouchId = t.identifier;
+                    const rect = joystickZone.getBoundingClientRect();
+                    joystickCenter.x = rect.left + rect.width / 2;
+                    joystickCenter.y = rect.top + rect.height / 2;
+                    updateJoystick(t.clientX, t.clientY);
+                }
+            }
+        }, { passive: false });
+
+        joystickZone.addEventListener('touchmove', (e) => {
+            if (!isStarted) return;
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                let t = e.changedTouches[i];
+                if (t.identifier === joystickTouchId) {
+                    updateJoystick(t.clientX, t.clientY);
+                }
+            }
+        }, { passive: false });
+
+        joystickZone.addEventListener('touchend', (e) => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === joystickTouchId) {
+                    resetJoystick();
+                }
+            }
+        });
+        joystickZone.addEventListener('touchcancel', (e) => {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === joystickTouchId) {
+                    resetJoystick();
                 }
             }
         });
@@ -1431,6 +1533,9 @@
             setTimeout(() => {
                 document.getElementById('intro-screen').style.display = 'none';
                 isStarted = true;
+                if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+                    joystickZone.style.display = 'block';
+                }
             }, 1000);
         });
         document.getElementById('modal-close').addEventListener('click', closeModal);
