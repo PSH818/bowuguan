@@ -1372,6 +1372,29 @@
             }
         });
 
+        // 桌面端鼠标支持摇杆
+        let joystickMouseActive = false;
+        joystickZone.addEventListener('mousedown', (e) => {
+            if (!isStarted || document.getElementById('modal').classList.contains('show')) return;
+            e.preventDefault();
+            joystickMouseActive = true;
+            const rect = joystickZone.getBoundingClientRect();
+            joystickCenter.x = rect.left + rect.width / 2;
+            joystickCenter.y = rect.top + rect.height / 2;
+            updateJoystick(e.clientX, e.clientY);
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (joystickMouseActive) {
+                updateJoystick(e.clientX, e.clientY);
+            }
+        });
+        window.addEventListener('mouseup', () => {
+            if (joystickMouseActive) {
+                joystickMouseActive = false;
+                resetJoystick();
+            }
+        });
+
         function updateCameraRotation(deltaX, deltaY, sensitivity) {
             cameraYaw -= deltaX * sensitivity;
             cameraPitch -= deltaY * sensitivity;
@@ -1533,9 +1556,7 @@
             setTimeout(() => {
                 document.getElementById('intro-screen').style.display = 'none';
                 isStarted = true;
-                if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-                    joystickZone.style.display = 'block';
-                }
+                joystickZone.style.display = 'block';
             }, 1000);
         });
         document.getElementById('modal-close').addEventListener('click', closeModal);
