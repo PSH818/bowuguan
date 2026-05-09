@@ -1611,10 +1611,10 @@
                 if (keys.a || keys.ArrowLeft) moveVec.addScaledVector(right, -speed);
                 if (keys.d || keys.ArrowRight) moveVec.addScaledVector(right, speed);
 
-                // 触摸移动（左半屏滑动）
+                // 摇杆移动
                 if (Math.abs(touchMoveDelta.x) > 0.001 || Math.abs(touchMoveDelta.y) > 0.001) {
-                    moveVec.addScaledVector(right, touchMoveDelta.x * speed * 8);
-                    moveVec.addScaledVector(forward, -touchMoveDelta.y * speed * 8);
+                    moveVec.addScaledVector(right, touchMoveDelta.x * speed);
+                    moveVec.addScaledVector(forward, -touchMoveDelta.y * speed);
                 }
 
                 // 碰撞检测并移动相机
